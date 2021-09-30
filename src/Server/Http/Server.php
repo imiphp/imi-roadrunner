@@ -7,21 +7,23 @@ namespace Imi\RoadRunner\Server\Http;
 use Imi\App;
 use Imi\AppContexts;
 use Imi\Bean\Annotation\Bean;
-use function Imi\cmd;
 use Imi\Event\Event;
 use Imi\Event\EventParam;
+use Imi\Log\Log;
 use Imi\RequestContext;
 use Imi\RoadRunner\Http\Message\RoadRunnerResponse;
 use Imi\RoadRunner\Util\RoadRunner;
 use Imi\Server\Contract\BaseServer;
 use Imi\Server\Http\Listener\HttpRouteInit;
 use Imi\Server\Protocol;
-use function Imi\ttyExec;
 use Imi\Util\File;
 use Imi\Util\Imi;
 use Imi\Util\Socket\IPEndPoint;
 use Symfony\Component\Process\Process;
 use Symfony\Component\Yaml\Yaml;
+
+use function Imi\cmd;
+use function Imi\ttyExec;
 
 /**
  * @Bean("RoadRunnerHttpServer")
@@ -84,8 +86,6 @@ class Server extends BaseServer
                 $this->psr7Worker = $worker = new \Spiral\RoadRunner\Http\PSR7Worker($worker, $psrFactory, $psrFactory, $psrFactory);
                 /** @var \Imi\Server\Http\Error\IErrorHandler $httpErrorHandler */
                 $httpErrorHandler = $this->getBean('HttpErrorHandler');
-                /** @var \Imi\Log\ErrorLog $errorLog */
-                $errorLog = App::getBean('ErrorLog');
 
                 $response = new RoadRunnerResponse($worker);
                 while ($request = $worker->waitRequest())
@@ -104,7 +104,7 @@ class Server extends BaseServer
                     {
                         if (true !== $httpErrorHandler->handle($th))
                         {
-                            $errorLog->onException($th);
+                            Log::error($th);
                         }
                         else
                         {
@@ -136,7 +136,7 @@ class Server extends BaseServer
                     'serve',
                 ];
                 $serverConfig = $this->config;
-                $workDir = $serverConfig['workDir'] ?? App::get(AppContexts::APP_PATH);
+                $workDir = $serverConfig['workDir'] ?? App::get(AppContexts::APP_PATH_PHYSICS);
                 if (null !== $workDir)
                 {
                     $options['w'] = $workDir;
@@ -169,7 +169,7 @@ class Server extends BaseServer
             $rrProcess = new Process($cmd, null, $env, null, null);
             try
             {
-                if ('/' === \DIRECTORY_SEPARATOR && Process::isTtySupported())
+                if (\Imi\Util\Process::isTtySupported())
                 {
                     $rrProcess->setTty(true);
                 }
@@ -181,7 +181,8 @@ class Server extends BaseServer
             $hotUpdateProcess = null;
             /** @var \Imi\RoadRunner\HotUpdate\HotUpdateProcess $hotUpdate */
             $hotUpdate = App::getBean('hotUpdate');
-            if ($enableHotUpdate = $hotUpdate->getStatus())
+            // @phpstan-ignore-next-line
+            if ($enableHotUpdate = ($hotUpdate->getStatus() && !IMI_IN_PHAR))
             {
                 $hotUpdateCmd = cmd(Imi::getImiCmd('rr/hotUpdate', [], $options));
             }
@@ -297,7 +298,7 @@ class Server extends BaseServer
         $workDir = $serverConfig['workDir'] ?? null;
         if (null === $workDir)
         {
-            $workDir = App::get(AppContexts::APP_PATH);
+            $workDir = App::get(AppContexts::APP_PATH_PHYSICS);
         }
         if (null !== $workDir)
         {
